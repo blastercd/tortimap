@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TortiMap Cantabria</title>
+    
+    <link rel="icon" type="image/jpeg" href="logo.jpeg">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <style>
+        :root { --cafe: #3C2A21; --tortilla: #FFC93C; --crema: #F9F5EB; --accent: #E48F45; --danger: #ff4d4d; --blue-gps: #4285F4; }
+        body { font-family: 'Poppins', sans-serif; margin: 0; background-color: var(--crema); display: flex; flex-direction: column; min-height: 100vh; }
+        header { background: var(--cafe); color: var(--tortilla); padding: 1rem; text-align: center; position: sticky; top: 0; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        
+        #map { height: 400px; width: 100%; border-bottom: 4px solid var(--accent); z-index: 5; background: #e0e0e0; }
+        
+        .page-wrapper { position: relative; flex-grow: 1; background: url('tortilla.jpg') no-repeat center center fixed; background-size: cover; z-index: 10; }
+        .content-overlay { background: rgba(249, 245, 235, 0.85); backdrop-filter: blur(4px); min-height: 100%; padding: 30px 0; }
+        .main-content { max-width: 1200px; margin: auto; width: 95%; }
+        
+        .rankings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        @media (max-width: 768px) { .rankings-grid { grid-template-columns: 1fr; } }
+        .rank-card { background: white; border-radius: 15px; padding: 20px; box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+        .rank-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .rank-item:hover { background: var(--tortilla); border-radius: 8px; }
+
+        /* Botones Flotantes con Cartelitos */
+        .fab-logo { position: fixed; bottom: 30px; left: 30px; z-index: 2000; width: 65px; height: 65px; border-radius: 50%; border: 2px solid var(--cafe); cursor: pointer; background: white; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .fab-logo img { width: 100%; height: 100%; object-fit: cover; }
+        .fab-logo:hover::after { content: "blastercd@hotmail.com"; position: absolute; bottom: 75px; left: 0; background: var(--cafe); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; white-space: nowrap; }
+        
+        .fab-container { position: fixed; bottom: 30px; right: 30px; z-index: 2000; }
+        .fab { background: var(--cafe); color: var(--tortilla); width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 35px; cursor: pointer; border: 2px solid var(--accent); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .fab-container:hover::after { content: "Añadir pincho"; position: absolute; bottom: 75px; right: 0; background: var(--cafe); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; white-space: nowrap; }
+
+        /* Modal y Formulario */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; }
+        .modal-content { background: var(--crema); width: 90%; max-width: 500px; margin: 3vh auto; padding: 25px; border-radius: 20px; position: relative; max-height: 90vh; overflow-y: auto; border: 3px solid var(--tortilla); }
+        .close-btn { position: absolute; right: 20px; top: 15px; font-size: 30px; cursor: pointer; }
+        
+        input, select, textarea { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-family: inherit; }
+        
+        .maps-search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .btn-maps-search { background: var(--blue-gps); color: white; border: none; border-radius: 8px; padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 12px; white-space: nowrap; }
+
+        .tortilla-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; padding: 10px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #ddd; }
+        .check-item { display: flex; align-items: center; font-size: 0.85rem; }
+        .check-item input { width: auto; margin-right: 8px; margin-bottom: 0; }
+        
+        .btn-main { background: var(--cafe); color: var(--tortilla); border: none; width: 100%; padding: 15px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .review-box { background: white; padding: 15px; border-radius: 10px; margin-top: 10px; border-left: 5px solid var(--tortilla); }
+        .gps-link { color: var(--blue-gps); font-weight: bold; text-decoration: none; display: inline-block; margin-top: 5px; border: 1px solid var(--blue-gps); padding: 3px 8px; border-radius: 5px; }
+
+        /* Admin UI */
+        #logout-admin, #visit-counter { display: none; position: fixed; z-index: 2001; left: 30px; background: var(--cafe); color: var(--tortilla); padding: 10px 15px; border-radius: 10px; font-weight: bold; }
+        #logout-admin { bottom: 110px; background: var(--danger); color: white; cursor: pointer; border: none; }
+        #visit-counter { bottom: 160px; font-size: 12px; border: 1px solid var(--accent); }
+        body.admin-mode #logout-admin, body.admin-mode #visit-counter { display: block; }
+    </style>
+</head>
+<body>
+
+<header><h1>🍳 TortiMap Cantabria</h1></header>
+<div id="map"></div>
+
+<div class="page-wrapper">
+    <div class="content-overlay">
+        <div class="main-content">
+            <div class="rankings-grid">
+                <div class="rank-card"><h2>💰 Más Baratas</h2><div id="list-precio"></div></div>
+                <div class="rank-card"><h2>🏆 Top Valoradas</h2><div id="list-stars"></div></div>
+            </div>
+            <p style="text-align: center; margin-top: 40px; opacity: 0.5; cursor: pointer;" onclick="checkAdmin()">Blaster © 2026</p>
+        </div>
+    </div>
+</div>
+
+<div id="visit-counter">Visitas: 0</div>
+<button id="logout-admin" onclick="exitAdmin()">🚪 Salir Admin</button>
+
+<div class="fab-logo" onclick="window.location.href='mailto:blastercd@hotmail.com'"><img src="logo.jpeg"></div>
+<div class="fab-container"><div class="fab" onclick="openModal('modalForm')">+</div></div>
+
+<div id="modalForm" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeModal('modalForm')">×</span>
+        <h3>Registrar Local</h3>
+        <input type="text" id="f-nombre" placeholder="Nombre del Bar">
+        <input type="text" id="f-autor" placeholder="Tu nombre">
+        
+        <div class="maps-search-row">
+            <input type="text" id="f-coords" placeholder="Latitud, Longitud (ej: 43.46, -3.80)" style="margin-bottom:0">
+            <button class="btn-maps-search" onclick="buscarEnMaps()">BUSCAR EN MAPS</button>
+        </div>
+        
+        <input type="number" id="f-precio" step="0.01" placeholder="Precio pincho (€)">
+        
+        <div class="tortilla-grid">
+            <label class="check-item"><input type="checkbox" class="tipo" value="Jamon Iberico"> Jamón Ibérico</label>
+            <label class="check-item"><input type="checkbox" class="tipo" value="Bonito"> Bonito</label>
+            <label class="check-item"><input type="checkbox" class="tipo" value="Boloñesa"> Boloñesa</label>
+            <label class="check-item"><input type="checkbox" class="tipo" value="Jamon y Queso"> Jamón y Queso</label>
+        </div>
+        
+        <select id="f-stars">
+            <option value="5">⭐⭐⭐⭐⭐</option>
+            <option value="4">⭐⭐⭐⭐</option>
+            <option value="3">⭐⭐⭐</option>
+        </select>
+        <textarea id="f-comentario" placeholder="Tu opinión..."></textarea>
+        <input type="file" id="f-foto" accept="image/*">
+        <button class="btn-main" onclick="guardarNuevo()">PUBLICAR PINCHO</button>
+    </div>
+</div>
+
+<div id="modalDetails" class="modal"><div class="modal-content" id="details-content"></div></div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyBnyvYyruttSjqrPT_KwqyNheB544INC0s",
+        authDomain: "tortimap.firebaseapp.com",
+        projectId: "tortimap",
+        storageBucket: "tortimap.firebasestorage.app",
+        messagingSenderId: "405979873150",
+        appId: "1:405979873150:web:84b3b6fb4521efc9103d2f",
+        databaseURL: "https://tortimap-default-rtdb.europe-west1.firebasedatabase.app/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let map, markersLayer, locales = [];
+
+    function init() {
+        map = L.map('map').setView([43.46, -3.80], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        markersLayer = L.layerGroup().addTo(map);
+
+        db.ref('locales').on('value', snap => {
+            const data = snap.val();
+            locales = data ? Object.values(data) : [];
+            renderAll();
+        });
+
+        db.ref('visitas').transaction(c => (c || 0) + 1, (err, comm, snap) => {
+            if(snap) document.getElementById('visit-counter').innerText = "Visitas: " + snap.val();
+        });
+        setTimeout(() => map.invalidateSize(), 500);
+    }
+
+    function openModal(id) { document.getElementById(id).style.display = 'block'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    function buscarEnMaps() {
+        const nombre = document.getElementById('f-nombre').value;
+        const query = nombre ? encodeURIComponent(nombre + " Cantabria") : "Cantabria";
+        window.open(`https://www.google.com/maps/search/${query}`, "_blank");
+    }
+
+    function guardarNuevo() {
+        const nombre = document.getElementById('f-nombre').value.trim();
+        const coords = document.getElementById('f-coords').value.trim();
+        const precio = parseFloat(document.getElementById('f-precio').value);
+        if(!nombre || !coords || isNaN(precio)) return alert("Faltan datos para publicar");
+
+        const [lat, lng] = coords.split(',').map(c => parseFloat(c.trim()));
+        if(isNaN(lat) || isNaN(lng)) return alert("Formato de coordenadas incorrecto (ej: 43.4, -3.8)");
+
+        const variedades = Array.from(document.querySelectorAll('.tipo:checked')).map(c => c.value);
+        const id = Date.now();
+        const fotoFile = document.getElementById('f-foto').files[0];
+
+        const save = (img) => {
+            const nuevo = {
+                id, nombre, lat, lng, precio,
+                variedad: variedades.join(", ") || "Clásica",
+                estrellas: parseInt(document.getElementById('f-stars').value),
+                comentarios: [{
+                    id: Date.now(),
+                    autor: document.getElementById('f-autor').value || "Anónimo",
+                    text: document.getElementById('f-comentario').value,
+                    stars: parseInt(document.getElementById('f-stars').value),
+                    foto: img
+                }]
+            };
+            db.ref('locales/' + id).set(nuevo).then(() => {
+                closeModal('modalForm');
+                document.getElementById('f-nombre').value = "";
+                document.getElementById('f-coords').value = "";
+                document.getElementById('f-precio').value = "";
+            });
+        };
+
+        if(fotoFile) {
+            const r = new FileReader();
+            r.onload = (e) => save(e.target.result);
+            r.readAsDataURL(fotoFile);
+        } else save(null);
+    }
+
+    function renderAll() {
+        if (!markersLayer) return;
+        markersLayer.clearLayers();
+        
+        const sortedP = [...locales].sort((a,b) => a.precio - b.precio);
+        const sortedS = [...locales].sort((a,b) => b.estrellas - a.estrellas);
+
+        document.getElementById('list-precio').innerHTML = sortedP.map(l => `<div class="rank-item" onclick="verDetalle(${l.id})"><span>${l.nombre}</span><b>${l.precio.toFixed(2)}€</b></div>`).join('');
+        document.getElementById('list-stars').innerHTML = sortedS.map(l => `<div class="rank-item" onclick="verDetalle(${l.id})"><span>${l.nombre}</span><b>${'⭐'.repeat(l.estrellas)}</b></div>`).join('');
+
+        locales.forEach(l => {
+            const gps = `https://www.google.com/maps/dir/?api=1&destination=${l.lat},${l.lng}`;
+            L.marker([l.lat, l.lng]).addTo(markersLayer).bindPopup(`
+                <b>${l.nombre}</b><br>
+                Precio: ${l.precio.toFixed(2)}€<br>
+                <a href="${gps}" target="_blank" class="gps-link">📍 IR CON GPS</a>
+            `);
+        });
+    }
+
+    function verDetalle(id) {
+        const l = locales.find(x => x.id === id);
+        if(!l) return;
+        const coms = l.comentarios ? (Array.isArray(l.comentarios) ? l.comentarios : Object.values(l.comentarios)) : [];
+        const isAdmin = document.body.classList.contains('admin-mode');
+
+        document.getElementById('details-content').innerHTML = `
+            <span class="close-btn" onclick="closeModal('modalDetails')">×</span>
+            <h2>${l.nombre}</h2>
+            <p><strong>Variedad:</strong> ${l.variedad || 'Clásica'}</p>
+            <p><strong>Precio:</strong> ${l.precio.toFixed(2)}€</p>
+            <hr>
+            ${coms.map(c => `
+                <div class="review-box">
+                    <strong>${c.autor}</strong> (${'⭐'.repeat(c.stars)})
+                    <p>${c.text}</p>
+                    ${c.foto ? `<img src="${c.foto}" style="width:100%; border-radius:10px; margin-top:10px;">` : ''}
+                    ${isAdmin ? `<button onclick="borrarComentario(${l.id}, ${c.id})" style="color:red; cursor:pointer; background:none; border:none; font-weight:bold; margin-top:5px;">[Borrar opinión]</button>` : ''}
+                </div>
+            `).join('')}
+            ${isAdmin ? `<button class="btn-main" style="background:red; margin-top:20px" onclick="borrarLocal(${l.id})">ELIMINAR BAR COMPLETO</button>` : ''}
+        `;
+        openModal('modalDetails');
+    }
+
+    function checkAdmin() { if(prompt("Pass:") === "1234") { document.body.classList.add('admin-mode'); renderAll(); } }
+    function exitAdmin() { document.body.classList.remove('admin-mode'); renderAll(); }
+    function borrarLocal(id) { if(confirm("¿Eliminar bar?")) db.ref('locales/' + id).remove().then(() => closeModal('modalDetails')); }
+    function borrarComentario(lId, cId) { 
+        if(!confirm("¿Borrar comentario?")) return;
+        const l = locales.find(x => x.id === lId);
+        const coms = (Array.isArray(l.comentarios) ? l.comentarios : Object.values(l.comentarios)).filter(c => c.id !== cId);
+        db.ref('locales/' + lId + '/comentarios').set(coms).then(() => verDetalle(lId));
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
